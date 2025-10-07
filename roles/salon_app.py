@@ -21,9 +21,17 @@ def obtener_quincena(fecha):
 
 def run_salon_app(usuario):
     """
-    Panel del salón con control de quincenas y columna de DNI antes de nombre.
+    Panel del salón con persistencia en sesión, control de quincenas y guardado por salón.
     """
     nombre_salon = usuario["usuario"]
+
+    # --- Estado persistente en sesión ---
+    if "df_salon" not in st.session_state:
+        st.session_state.df_salon = None
+    if "path_salon" not in st.session_state:
+        st.session_state.path_salon = None
+    if "rango_salon" not in st.session_state:
+        st.session_state.rango_salon = None
 
     # --- Sidebar ---
     st.sidebar.markdown(f"### 💇 {nombre_salon}")
@@ -41,39 +49,48 @@ def run_salon_app(usuario):
         fin = col2.date_input("Hasta", datetime.today())
         aplicar = col3.button("📤 Aplicar rango", type="primary")
 
+        # === Aplicar rango ===
         if aplicar:
             if fin < inicio:
                 st.error("⚠️ La fecha final no puede ser menor que la inicial.")
                 st.stop()
 
             # Detectar quincena a partir de la fecha inicial
-            _, inicio_q, fin_q = obtener_quincena(inicio)
-            _, _, fin_q_fin = obtener_quincena(fin)
+            q_inicial, inicio_q, fin_q = obtener_quincena(inicio)
+            q_final, inicio_q_fin, fin_q_fin = obtener_quincena(fin)
 
             # Si el rango cruza dos quincenas, se usa la segunda
-            if inicio_q != fin_q:
-                inicio_q = fin_q
+            if q_inicial != q_final:
+                inicio_q = inicio_q_fin
                 fin_q = fin_q_fin
 
-            # --- Cargar datos de esa quincena ---
-            df, path = cargar_datos(nombre_salon, inicio_q, fin_q)
+            # Crear nombre único por salón
+            nombre_archivo = f"{nombre_salon}_{inicio_q.year}-{inicio_q.month:02d}-{q_final}.csv"
 
-            # --- Asegurar columnas obligatorias y orden correcto ---
+            df, path = cargar_datos(nombre_salon, inicio_q, fin_q, nombre_archivo)
+
+            # Asegurar columnas y orden
             columnas_obligatorias = ["DNI", "NOMBRE Y APELLIDO", "ÁREA"]
             for col in columnas_obligatorias:
                 if col not in df.columns:
                     df[col] = ""
 
-            # Reordenar para que DNI esté antes del nombre
             columnas = ["DNI", "NOMBRE Y APELLIDO", "ÁREA"] + [
-                c for c in df.columns if c not in ["DNI", "NOMBRE Y APELLIDO", "ÁREA"]
+                c for c in df.columns if c not in columnas_obligatorias
             ]
             df = df[columnas]
 
-            # --- Mostrar tabla ---
+            # Guardar en sesión
+            st.session_state.df_salon = df
+            st.session_state.path_salon = path
+            st.session_state.rango_salon = (inicio_q, fin_q)
+
+        # === Mostrar tabla persistente ===
+        if st.session_state.df_salon is not None:
             st.markdown("#### 🧾 Cuadro de horarios del personal")
+
             edited_df = st.data_editor(
-                df,
+                st.session_state.df_salon,
                 num_rows="dynamic",
                 use_container_width=True,
                 column_config={
@@ -83,11 +100,14 @@ def run_salon_app(usuario):
                 },
             )
 
-            # --- Guardar cambios ---
+            # Actualizar el dataframe en sesión
+            st.session_state.df_salon = edited_df
+
+            # Guardar cambios
             if st.button("💾 Guardar cambios", type="primary"):
-                guardar_csv_seguro(path, edited_df)
+                guardar_csv_seguro(st.session_state.path_salon, edited_df)
                 st.success("✅ Cambios guardados correctamente.")
-                st.caption(f"Archivo guardado en: `{os.path.basename(path)}`")
+                st.caption(f"Archivo guardado en: `{os.path.basename(st.session_state.path_salon)}`")
 
         else:
             st.warning("Selecciona un rango y haz clic en **📤 Aplicar rango** para mostrar los datos.")
@@ -99,6 +119,5 @@ def run_salon_app(usuario):
 
     # --- Cerrar sesión ---
     if st.sidebar.button("Cerrar sesión"):
-        st.session_state.autenticado = False
-        st.session_state.usuario = None
+        st.session_state.clear()
         st.rerun()

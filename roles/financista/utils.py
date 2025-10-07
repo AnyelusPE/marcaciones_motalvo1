@@ -1,7 +1,6 @@
 import os
 import pandas as pd
-from datetime import datetime, timedelta
-
+from datetime import datetime
 
 def listar_salones():
     base_path = os.path.join("data", "uploads")
@@ -9,9 +8,7 @@ def listar_salones():
         return []
     return [d for d in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, d))]
 
-
 def calcular_resumen(df):
-    """Calcula horas y tardanzas."""
     resumen = []
     for _, row in df.iterrows():
         dni = row.get("DNI", "")

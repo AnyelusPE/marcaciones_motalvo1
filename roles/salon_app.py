@@ -25,37 +25,50 @@ def run_salon_app(usuario):
 
         # --- Selección de rango de fechas ---
         st.markdown("#### 📆 Selecciona el rango de fechas:")
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns([1, 1, 0.5])
         inicio = col1.date_input("Desde", datetime.today().replace(day=1))
         fin = col2.date_input("Hasta", datetime.today())
 
-        if fin < inicio:
-            st.error("⚠️ La fecha final no puede ser menor que la inicial.")
-            st.stop()
+        aplicar = col3.button("📤 Aplicar rango", type="primary")
 
-        inicio_dt = datetime.combine(inicio, datetime.min.time())
-        fin_dt = datetime.combine(fin, datetime.min.time())
+        if aplicar:
+            if fin < inicio:
+                st.error("⚠️ La fecha final no puede ser menor que la inicial.")
+                st.stop()
 
-        # --- Cargar datos del rango ---
-        df, path = cargar_datos(nombre_salon, inicio_dt, fin_dt)
+            inicio_dt = datetime.combine(inicio, datetime.min.time())
+            fin_dt = datetime.combine(fin, datetime.min.time())
 
-        # --- Mostrar tabla editable ---
-        st.markdown("#### 🧾 Cuadro de horarios del personal")
-        edited_df = st.data_editor(
-            df,
-            num_rows="dynamic",
-            use_container_width=True,
-            column_config={
-                "NOMBRE Y APELLIDO": st.column_config.TextColumn("NOMBRE Y APELLIDO"),
-                "ÁREA": st.column_config.TextColumn("ÁREA"),
-            },
-        )
+            # --- Cargar datos del rango ---
+            df, path = cargar_datos(nombre_salon, inicio_dt, fin_dt)
 
-        # --- Botón de guardar cambios ---
-        if st.button("💾 Guardar cambios", type="primary"):
-            guardar_csv_seguro(path, edited_df)
-            st.success("✅ Cambios guardados correctamente.")
-            st.caption(f"Archivo guardado en: `{path}`")
+            # Agregamos columna DNI si no existe
+            columnas_obligatorias = ["DNI", "NOMBRE Y APELLIDO", "ÁREA"]
+            for col in columnas_obligatorias:
+                if col not in df.columns:
+                    df[col] = ""
+
+            # --- Mostrar tabla editable ---
+            st.markdown("#### 🧾 Cuadro de horarios del personal")
+            edited_df = st.data_editor(
+                df,
+                num_rows="dynamic",
+                use_container_width=True,
+                column_config={
+                    "DNI": st.column_config.TextColumn("DNI"),
+                    "NOMBRE Y APELLIDO": st.column_config.TextColumn("NOMBRE Y APELLIDO"),
+                    "ÁREA": st.column_config.TextColumn("ÁREA"),
+                },
+            )
+
+            # --- Guardar cambios ---
+            if st.button("💾 Guardar cambios", type="primary"):
+                guardar_csv_seguro(path, edited_df)
+                st.success("✅ Cambios guardados correctamente.")
+                st.caption(f"Archivo guardado en: `{path}`")
+
+        else:
+            st.warning("Selecciona un rango y haz clic en **📤 Aplicar rango** para mostrar los datos.")
 
     # ==========================
     # SECCIÓN: CONFIGURACIÓN

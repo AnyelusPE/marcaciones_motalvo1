@@ -2,12 +2,26 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from core.db import cargar_datos, guardar_csv_seguro
+import calendar
+import os
+
+
+def obtener_quincena(fecha):
+    """Determina si una fecha pertenece a la 1ra o 2da quincena del mes."""
+    if fecha.day <= 15:
+        inicio = fecha.replace(day=1)
+        fin = fecha.replace(day=15)
+        return "Q1", inicio, fin
+    else:
+        ultimo_dia = calendar.monthrange(fecha.year, fecha.month)[1]
+        inicio = fecha.replace(day=16)
+        fin = fecha.replace(day=ultimo_dia)
+        return "Q2", inicio, fin
 
 
 def run_salon_app(usuario):
     """
-    Panel principal del rol 'salón'.
-    Permite seleccionar rango de fechas, editar horarios y guardarlos en su carpeta correspondiente.
+    Panel del salón con control de quincenas y columna de DNI antes de nombre.
     """
     nombre_salon = usuario["usuario"]
 
@@ -16,19 +30,15 @@ def run_salon_app(usuario):
     st.sidebar.markdown("(salón)")
     menu = st.sidebar.radio("Navegación", ["Inicio", "Configuración"])
 
-    # ==========================
-    # SECCIÓN PRINCIPAL: INICIO
-    # ==========================
     if menu == "Inicio":
         st.title(f"📅 Panel del salón - {nombre_salon}")
         st.info("📝 Puedes editar los datos directamente en la tabla. Los cambios se pueden guardar.")
 
-        # --- Selección de rango de fechas ---
+        # --- Selección de fechas ---
         st.markdown("#### 📆 Selecciona el rango de fechas:")
-        col1, col2, col3 = st.columns([1, 1, 0.5])
+        col1, col2, col3 = st.columns([1, 1, 0.6])
         inicio = col1.date_input("Desde", datetime.today().replace(day=1))
         fin = col2.date_input("Hasta", datetime.today())
-
         aplicar = col3.button("📤 Aplicar rango", type="primary")
 
         if aplicar:
@@ -36,19 +46,31 @@ def run_salon_app(usuario):
                 st.error("⚠️ La fecha final no puede ser menor que la inicial.")
                 st.stop()
 
-            inicio_dt = datetime.combine(inicio, datetime.min.time())
-            fin_dt = datetime.combine(fin, datetime.min.time())
+            # Detectar quincena a partir de la fecha inicial
+            _, inicio_q, fin_q = obtener_quincena(inicio)
+            _, _, fin_q_fin = obtener_quincena(fin)
 
-            # --- Cargar datos del rango ---
-            df, path = cargar_datos(nombre_salon, inicio_dt, fin_dt)
+            # Si el rango cruza dos quincenas, se usa la segunda
+            if inicio_q != fin_q:
+                inicio_q = fin_q
+                fin_q = fin_q_fin
 
-            # Agregamos columna DNI si no existe
+            # --- Cargar datos de esa quincena ---
+            df, path = cargar_datos(nombre_salon, inicio_q, fin_q)
+
+            # --- Asegurar columnas obligatorias y orden correcto ---
             columnas_obligatorias = ["DNI", "NOMBRE Y APELLIDO", "ÁREA"]
             for col in columnas_obligatorias:
                 if col not in df.columns:
                     df[col] = ""
 
-            # --- Mostrar tabla editable ---
+            # Reordenar para que DNI esté antes del nombre
+            columnas = ["DNI", "NOMBRE Y APELLIDO", "ÁREA"] + [
+                c for c in df.columns if c not in ["DNI", "NOMBRE Y APELLIDO", "ÁREA"]
+            ]
+            df = df[columnas]
+
+            # --- Mostrar tabla ---
             st.markdown("#### 🧾 Cuadro de horarios del personal")
             edited_df = st.data_editor(
                 df,
@@ -65,17 +87,14 @@ def run_salon_app(usuario):
             if st.button("💾 Guardar cambios", type="primary"):
                 guardar_csv_seguro(path, edited_df)
                 st.success("✅ Cambios guardados correctamente.")
-                st.caption(f"Archivo guardado en: `{path}`")
+                st.caption(f"Archivo guardado en: `{os.path.basename(path)}`")
 
         else:
             st.warning("Selecciona un rango y haz clic en **📤 Aplicar rango** para mostrar los datos.")
 
-    # ==========================
-    # SECCIÓN: CONFIGURACIÓN
-    # ==========================
     elif menu == "Configuración":
         st.title("⚙️ Configuración del salón")
-        st.write("Aquí podrás configurar parámetros futuros (como límites de personal o formatos de horario).")
+        st.write("Aquí podrás configurar parámetros futuros.")
         st.warning("Módulo en desarrollo...")
 
     # --- Cerrar sesión ---
